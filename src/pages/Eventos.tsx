@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { EventosTable } from "@/components/eventos/EventosTable";
 import { EventosFiltro } from "@/components/eventos/EventosFiltro";
-import { EventoFinanceiro, FiltroEvento } from "@/types";
+import { EventoFinanceiro, FiltroEvento, StatusPagamento } from "@/types";
 import { EventosService } from "@/services/eventos-service";
 import { useToast } from "@/hooks/use-toast";
 import { Link, useNavigate } from "react-router-dom";
@@ -18,7 +18,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Download, FileDown, Loader2, Plus } from "lucide-react";
+import { FileDown, Loader2, Plus } from "lucide-react";
 
 const Eventos = () => {
   const [eventos, setEventos] = useState<EventoFinanceiro[]>([]);
@@ -87,6 +87,25 @@ const Eventos = () => {
   const handleDelete = (id: string) => {
     setEventoParaExcluir(id);
     setOpenDeleteDialog(true);
+  };
+  
+  const handleStatusChange = async (id: string, novoStatus: StatusPagamento) => {
+    try {
+      // Buscar o evento atualizado
+      const eventoAtualizado = await EventosService.getById(id);
+      
+      if (eventoAtualizado) {
+        // Atualizar os estados locais
+        setEventos(eventos.map(evento => 
+          evento.id === id ? { ...evento, status: novoStatus } : evento
+        ));
+        setEventosFiltrados(eventosFiltrados.map(evento => 
+          evento.id === id ? { ...evento, status: novoStatus } : evento
+        ));
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar lista após mudança de status:", error);
+    }
   };
 
   const confirmarExclusao = async () => {
@@ -196,6 +215,7 @@ const Eventos = () => {
           eventos={eventosFiltrados}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onStatusChange={handleStatusChange}
         />
       )}
       

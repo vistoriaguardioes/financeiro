@@ -1,5 +1,5 @@
 
-import { EventoFinanceiro, FiltroEvento } from "@/types";
+import { EventoFinanceiro, FiltroEvento, StatusPagamento } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
 
@@ -54,7 +54,8 @@ export class EventosService {
       motivo_evento: evento.motivoEvento,
       data_pagamento: evento.dataPagamento,
       nota_fiscal_url: evento.notaFiscalUrl,
-      boleto_url: evento.boletoUrl
+      boleto_url: evento.boletoUrl,
+      status: evento.status || 'Pendente'
     };
     
     const { data, error } = await supabase
@@ -85,6 +86,7 @@ export class EventosService {
     if (updates.dataPagamento !== undefined) snakeCaseUpdates.data_pagamento = updates.dataPagamento;
     if (updates.notaFiscalUrl !== undefined) snakeCaseUpdates.nota_fiscal_url = updates.notaFiscalUrl;
     if (updates.boletoUrl !== undefined) snakeCaseUpdates.boleto_url = updates.boletoUrl;
+    if (updates.status !== undefined) snakeCaseUpdates.status = updates.status;
     
     const { data, error } = await supabase
       .from(this.TABLE_NAME)
@@ -102,6 +104,11 @@ export class EventosService {
     
     // Mapear do formato snake_case para camelCase
     return this.mapFromSupabase([data])[0];
+  }
+
+  // Atualizar apenas o status de um evento
+  static async updateStatus(id: string, status: StatusPagamento): Promise<EventoFinanceiro | undefined> {
+    return this.update(id, { status });
   }
 
   // Excluir um evento
@@ -159,6 +166,44 @@ export class EventosService {
     
     // Mapear do formato snake_case para camelCase
     return this.mapFromSupabase(data || []);
+  }
+
+  // Exportar eventos para CSV
+  static async exportarCSV(eventos: EventoFinanceiro[]): Promise<string> {
+    // Definir cabeçalhos CSV
+    const headers = [
+      'ID',
+      'Fornecedor',
+      'Placa',
+      'Valor',
+      'Data do Evento',
+      'Motivo',
+      'Data Pagamento',
+      'Status',
+    ].join(',');
+    
+    // Formatar os dados de cada evento
+    const formatarEvento = (evento: EventoFinanceiro) => {
+      const dataEvento = new Date(evento.dataEvento).toLocaleDateString('pt-BR');
+      const dataPagamento = new Date(evento.dataPagamento).toLocaleDateString('pt-BR');
+      const valor = evento.valor.toString().replace('.', ',');
+      const status = evento.status || (evento.notaFiscalUrl ? 'Pago' : 'Pendente');
+      
+      return [
+        evento.id,
+        `"${evento.fornecedor}"`,
+        evento.placaVeiculo,
+        valor,
+        dataEvento,
+        `"${evento.motivoEvento}"`,
+        dataPagamento,
+        status,
+      ].join(',');
+    };
+    
+    // Construir o conteúdo CSV
+    const rows = eventos.map(formatarEvento);
+    return [headers, ...rows].join('\n');
   }
 
   // Obter listas de valores para filtros
@@ -230,6 +275,7 @@ export class EventosService {
       dataPagamento: item.data_pagamento,
       notaFiscalUrl: item.nota_fiscal_url,
       boletoUrl: item.boleto_url,
+      status: item.status as StatusPagamento || undefined,
       createdAt: item.created_at,
       updatedAt: item.updated_at,
     }));

@@ -2,13 +2,17 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Download, FileText, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Check, Download, FileText, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { EventoFinanceiro, StatusPagamento } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuSub,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -21,15 +25,23 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
+import { EventosService } from "@/services/eventos-service";
 
 interface EventosTableProps {
   eventos: EventoFinanceiro[];
   onEdit: (evento: EventoFinanceiro) => void;
   onDelete: (id: string) => void;
+  onStatusChange?: (id: string, novoStatus: StatusPagamento) => void;
 }
 
-export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
+export function EventosTable({ 
+  eventos, 
+  onEdit, 
+  onDelete, 
+  onStatusChange 
+}: EventosTableProps) {
   const { toast } = useToast();
+  const [atualizandoStatus, setAtualizandoStatus] = useState<string | null>(null);
 
   const formataMoeda = (valor: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -39,6 +51,12 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
   };
 
   const determinaStatus = (evento: EventoFinanceiro): StatusPagamento => {
+    // Se o status está explicitamente definido, usamos ele
+    if (evento.status) {
+      return evento.status;
+    }
+    
+    // Caso contrário, calculamos com base nas regras anteriores
     const dataAtual = new Date();
     const dataPagamento = new Date(evento.dataPagamento);
     
@@ -58,7 +76,6 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
       case "Pago":
         return "default" as const;
       case "Pendente":
-        // Mudando de "warning" para "secondary" já que "warning" não é suportado
         return "secondary" as const;
       case "Atrasado":
         return "destructive" as const;
@@ -88,6 +105,34 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
     });
   };
 
+  const handleStatusChange = async (eventoId: string, novoStatus: StatusPagamento) => {
+    try {
+      setAtualizandoStatus(eventoId);
+      
+      // Atualizar o status no banco de dados
+      await EventosService.updateStatus(eventoId, novoStatus);
+      
+      // Notificar o componente pai para atualizar a lista
+      if (onStatusChange) {
+        onStatusChange(eventoId, novoStatus);
+      }
+      
+      toast({
+        title: "Status atualizado",
+        description: `O status do evento foi alterado para ${novoStatus}`,
+      });
+    } catch (error) {
+      console.error("Erro ao atualizar status:", error);
+      toast({
+        title: "Erro ao atualizar status",
+        description: "Não foi possível atualizar o status do evento",
+        variant: "destructive",
+      });
+    } finally {
+      setAtualizandoStatus(null);
+    }
+  };
+
   return (
     <div className="rounded-md border">
       <Table>
@@ -114,6 +159,8 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
           ) : (
             eventos.map((evento) => {
               const status = determinaStatus(evento);
+              const isUpdating = atualizandoStatus === evento.id;
+              
               return (
                 <TableRow key={evento.id}>
                   <TableCell className="guardioes-table-cell font-medium">
@@ -140,7 +187,7 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
                   </TableCell>
                   <TableCell className="guardioes-table-cell">
                     <Badge variant={getBadgeVariant(status)}>
-                      {status}
+                      {isUpdating ? "Atualizando..." : status}
                     </Badge>
                   </TableCell>
                   <TableCell className="guardioes-table-cell">
@@ -178,6 +225,34 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
                           <Pencil className="mr-2 h-4 w-4" />
                           Editar
                         </DropdownMenuItem>
+                        
+                        <DropdownMenuSeparator />
+                        
+                        <DropdownMenuSub>
+                          <DropdownMenuSubTrigger>
+                            <Check className="mr-2 h-4 w-4" />
+                            Alterar Status
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem 
+                              onClick={() => handleStatusChange(evento.id, "Pendente")}
+                              disabled={status === "Pendente" || isUpdating}
+                            >
+                              <Badge variant="secondary" className="mr-2">Pendente</Badge>
+                              Marcar como Pendente
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleStatusChange(evento.id, "Pago")}
+                              disabled={status === "Pago" || isUpdating}
+                            >
+                              <Badge variant="default" className="mr-2">Pago</Badge>
+                              Marcar como Pago
+                            </DropdownMenuItem>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuSub>
+                        
+                        <DropdownMenuSeparator />
+                        
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => onDelete(evento.id)}

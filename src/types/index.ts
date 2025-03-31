@@ -11,6 +11,7 @@ export interface EventoFinanceiro {
   dataPagamento: string;
   notaFiscalUrl?: string;
   boletoUrl?: string;
+  status?: StatusPagamento;
   createdAt: string;
   updatedAt: string;
 }
