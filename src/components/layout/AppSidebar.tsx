@@ -23,11 +23,21 @@ import {
   Settings,
   Truck,
   Users,
+  LogOut
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export function AppSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Função para fazer logout
+  const handleLogout = () => {
+    localStorage.removeItem("guardAuthenticated");
+    localStorage.removeItem("authTimestamp");
+    navigate("/login");
+  };
 
   // Menu items
   const menuItems = [
@@ -79,6 +89,12 @@ export function AppSidebar() {
       url: "/suporte",
       icon: HelpCircle,
     },
+    {
+      title: "Sair",
+      url: "#",
+      icon: LogOut,
+      onClick: handleLogout
+    }
   ];
 
   return (
@@ -122,11 +138,22 @@ export function AppSidebar() {
                 const isActive = location.pathname === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild data-active={isActive}>
-                      <Link to={item.url}>
-                        <item.icon size={18} />
-                        <span>{item.title}</span>
-                      </Link>
+                    <SidebarMenuButton 
+                      asChild 
+                      data-active={isActive}
+                      onClick={item.onClick}
+                    >
+                      {item.url === "#" ? (
+                        <button className="flex w-full items-center">
+                          <item.icon size={18} />
+                          <span>{item.title}</span>
+                        </button>
+                      ) : (
+                        <Link to={item.url}>
+                          <item.icon size={18} />
+                          <span>{item.title}</span>
+                        </Link>
+                      )}
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
@@ -138,7 +165,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-4">
         {!collapsed && (
           <div className="text-xs text-sidebar-foreground/70 text-center">
-            © 2023 Guardiões Proteção Veicular
+            © 2025 Guardiões Proteção Veicular
           </div>
         )}
       </SidebarFooter>

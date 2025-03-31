@@ -58,7 +58,8 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
       case "Pago":
         return "default" as const;
       case "Pendente":
-        return "warning" as const;
+        // Mudando de "warning" para "secondary" já que "warning" não é suportado
+        return "secondary" as const;
       case "Atrasado":
         return "destructive" as const;
       case "Cancelado":
