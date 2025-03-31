@@ -56,15 +56,15 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
   const getBadgeVariant = (status: StatusPagamento) => {
     switch (status) {
       case "Pago":
-        return "success";
+        return "default" as const;
       case "Pendente":
-        return "warning";
+        return "warning" as const;
       case "Atrasado":
-        return "destructive";
+        return "destructive" as const;
       case "Cancelado":
-        return "outline";
+        return "outline" as const;
       default:
-        return "secondary";
+        return "secondary" as const;
     }
   };
 

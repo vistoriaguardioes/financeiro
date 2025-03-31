@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { EventoFinanceiro } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -29,7 +28,6 @@ import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Download, FileText, Loader2, Upload } from "lucide-react";
 import { EventosService } from "@/services/eventos-service";
 
-// Schema de validação do formulário
 const eventoSchema = z.object({
   fornecedor: z.string().min(1, "Fornecedor é obrigatório"),
   placaVeiculo: z.string().min(7, "Placa do veículo inválida"),
@@ -51,6 +49,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
   const [anexoBoleto, setAnexoBoleto] = useState<File | null>(null);
   const [uploadingNFe, setUploadingNFe] = useState(false);
   const [uploadingBoleto, setUploadingBoleto] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const form = useForm<z.infer<typeof eventoSchema>>({
     resolver: zodResolver(eventoSchema),
@@ -64,7 +63,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     },
   });
 
-  // Atualiza o formulário quando recebe um evento para editar
   useEffect(() => {
     if (eventoAtual) {
       form.reset({
@@ -79,8 +77,11 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
   }, [eventoAtual, form]);
 
   const handleFormSubmit = async (data: z.infer<typeof eventoSchema>) => {
+    if (submitting || isLoading) return;
+    
     try {
-      // Prepara os dados básicos do evento
+      setSubmitting(true);
+      
       const eventoData: Partial<EventoFinanceiro> = {
         ...eventoAtual,
         fornecedor: data.fornecedor,
@@ -90,23 +91,15 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         motivoEvento: data.motivoEvento,
         dataPagamento: data.dataPagamento.toISOString(),
       };
-
-      // Se for um novo evento, primeiro criamos o registro para ter o ID
-      let eventoId = eventoAtual?.id;
-
-      if (!eventoId) {
-        const novoEvento = await EventosService.create(
-          eventoData as Omit<EventoFinanceiro, "id" | "createdAt" | "updatedAt">
-        );
-        eventoId = novoEvento.id;
-        eventoData.id = eventoId;
+      
+      if (eventoAtual?.id) {
+        eventoData.id = eventoAtual.id;
       }
 
-      // Upload da Nota Fiscal se houver
-      if (anexoNFe && eventoId) {
+      if (anexoNFe) {
         setUploadingNFe(true);
         try {
-          const nfeUrl = await EventosService.uploadArquivo(anexoNFe, 'nfe', eventoId);
+          const nfeUrl = await EventosService.uploadArquivo(anexoNFe, 'nfe', eventoAtual?.id || '');
           if (nfeUrl) {
             eventoData.notaFiscalUrl = nfeUrl;
             toast({
@@ -126,11 +119,10 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         }
       }
 
-      // Upload do Boleto se houver
-      if (anexoBoleto && eventoId) {
+      if (anexoBoleto) {
         setUploadingBoleto(true);
         try {
-          const boletoUrl = await EventosService.uploadArquivo(anexoBoleto, 'boleto', eventoId);
+          const boletoUrl = await EventosService.uploadArquivo(anexoBoleto, 'boleto', eventoAtual?.id || '');
           if (boletoUrl) {
             eventoData.boletoUrl = boletoUrl;
             toast({
@@ -150,11 +142,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         }
       }
 
-      // Se tivermos o ID (evento existente ou recém-criado), atualizamos se tiver anexos
-      if (eventoId && (anexoNFe || anexoBoleto)) {
-        await EventosService.update(eventoId, eventoData);
-      }
-
       onSubmit(eventoData);
 
     } catch (error) {
@@ -164,6 +151,8 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         description: "Ocorreu um erro ao processar os dados",
         variant: "destructive",
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -193,7 +182,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Fornecedor */}
           <FormField
             control={form.control}
             name="fornecedor"
@@ -208,7 +196,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
             )}
           />
 
-          {/* Placa do Veículo */}
           <FormField
             control={form.control}
             name="placaVeiculo"
@@ -230,7 +217,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
             )}
           />
 
-          {/* Valor */}
           <FormField
             control={form.control}
             name="valor"
@@ -249,7 +235,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
             )}
           />
 
-          {/* Data do Evento */}
           <FormField
             control={form.control}
             name="dataEvento"
@@ -290,7 +275,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
             )}
           />
 
-          {/* Motivo do Evento */}
           <FormField
             control={form.control}
             name="motivoEvento"
@@ -309,7 +293,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
             )}
           />
 
-          {/* Data de Pagamento */}
           <FormField
             control={form.control}
             name="dataPagamento"
@@ -351,11 +334,9 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
           />
         </div>
 
-        {/* Anexos */}
         <div className="space-y-4">
           <h3 className="text-lg font-medium">Anexos</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Nota Fiscal */}
             <div className="space-y-2">
               <FormLabel htmlFor="nfe">Nota Fiscal Eletrônica (NFe)</FormLabel>
               <div className="flex items-center space-x-2">
@@ -410,7 +391,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
               )}
             </div>
 
-            {/* Boleto */}
             <div className="space-y-2">
               <FormLabel htmlFor="boleto">Boleto de Pagamento</FormLabel>
               <div className="flex items-center space-x-2">
@@ -467,7 +447,6 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
           </div>
         </div>
 
-        {/* Botões */}
         <div className="flex justify-end space-x-4">
           <Button
             type="button"

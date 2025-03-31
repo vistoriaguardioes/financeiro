@@ -15,13 +15,17 @@ const NovoEvento = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (eventoData: Partial<EventoFinanceiro>) => {
+    // Evitar processamento duplicado se já estiver em andamento
+    if (isLoading) return;
+    
     try {
       setIsLoading(true);
       
       // Remover o ID para garantir que um novo seja gerado
       const { id, ...eventoSemId } = eventoData;
       
-      await EventosService.create(eventoSemId as Omit<EventoFinanceiro, "id" | "createdAt" | "updatedAt">);
+      // Criar o evento (sem anexos, estes são tratados no EventoForm)
+      const novoEvento = await EventosService.create(eventoSemId as Omit<EventoFinanceiro, "id" | "createdAt" | "updatedAt">);
       
       toast({
         title: "Evento cadastrado",

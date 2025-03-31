@@ -30,16 +30,14 @@ export class EventosService {
       .from(this.TABLE_NAME)
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
     
     if (error) {
-      if (error.code === 'PGRST116') {
-        // PGRST116 significa que nenhum registro foi encontrado
-        return undefined;
-      }
       console.error("Erro ao buscar evento por ID:", error);
       throw new Error(error.message);
     }
+    
+    if (!data) return undefined;
     
     // Mapear do formato snake_case para camelCase
     return this.mapFromSupabase([data])[0];
@@ -93,12 +91,14 @@ export class EventosService {
       .update(snakeCaseUpdates)
       .eq('id', id)
       .select('*')
-      .single();
+      .maybeSingle();
     
     if (error) {
       console.error("Erro ao atualizar evento:", error);
       throw new Error(error.message);
     }
+    
+    if (!data) return undefined;
     
     // Mapear do formato snake_case para camelCase
     return this.mapFromSupabase([data])[0];
@@ -161,36 +161,6 @@ export class EventosService {
     return this.mapFromSupabase(data || []);
   }
 
-  // Exportar para CSV
-  static async exportarCSV(eventos: EventoFinanceiro[]): Promise<string> {
-    const headers = [
-      "ID",
-      "Fornecedor",
-      "Placa do Veículo",
-      "Valor",
-      "Data do Evento",
-      "Motivo do Evento",
-      "Data de Pagamento",
-    ];
-    
-    const rows = eventos.map(evento => [
-      evento.id,
-      evento.fornecedor,
-      evento.placaVeiculo,
-      evento.valor.toString(),
-      new Date(evento.dataEvento).toLocaleDateString("pt-BR"),
-      evento.motivoEvento,
-      new Date(evento.dataPagamento).toLocaleDateString("pt-BR"),
-    ]);
-    
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(row => row.join(","))
-    ].join("\n");
-    
-    return csvContent;
-  }
-
   // Obter listas de valores para filtros
   static async getOpcoesParaFiltros() {
     const { data, error } = await supabase
@@ -202,9 +172,9 @@ export class EventosService {
       throw new Error(error.message);
     }
     
-    const fornecedores = [...new Set(data?.map(e => e.fornecedor) || [])];
-    const placasVeiculo = [...new Set(data?.map(e => e.placa_veiculo) || [])];
-    const motivosEvento = [...new Set(data?.map(e => e.motivo_evento) || [])];
+    const fornecedores = [...new Set((data || []).map(e => e.fornecedor))];
+    const placasVeiculo = [...new Set((data || []).map(e => e.placa_veiculo))];
+    const motivosEvento = [...new Set((data || []).map(e => e.motivo_evento))];
     
     return {
       fornecedores,
@@ -217,10 +187,13 @@ export class EventosService {
   static async uploadArquivo(file: File, tipo: 'nfe' | 'boleto', eventoId: string): Promise<string | null> {
     if (!file) return null;
     
+    // Se não temos o ID do evento, geramos um temporário
+    const idParaArquivo = eventoId || uuidv4();
+    
     // Formatando o nome do arquivo: tipo_eventoId_timestamp.extensao
     const fileExt = file.name.split('.').pop();
-    const fileName = `${tipo}_${eventoId}_${Date.now()}.${fileExt}`;
-    const filePath = `${eventoId}/${fileName}`;
+    const fileName = `${tipo}_${idParaArquivo}_${Date.now()}.${fileExt}`;
+    const filePath = `${idParaArquivo}/${fileName}`;
     
     // Realizando o upload
     const { data, error } = await supabase
