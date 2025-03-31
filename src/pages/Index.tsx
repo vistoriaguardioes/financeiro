@@ -1,42 +1,41 @@
-
 import { useEffect, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { StatusCard } from "@/components/dashboard/StatusCard";
 import { OverviewChart } from "@/components/dashboard/OverviewChart";
 import { EventosTable } from "@/components/eventos/EventosTable";
-import { EventoFinanceiro } from "@/types";
 import { EventosService } from "@/services/eventos-service";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Calendar, FilePlus, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { EventoFinanceiro, StatusPagamento } from "@/types";
 
 const Dashboard = () => {
   const [eventos, setEventos] = useState<EventoFinanceiro[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const carregarEventos = async () => {
-      try {
-        setIsLoading(true);
-        const data = await EventosService.getAll();
-        setEventos(data);
-      } catch (error) {
-        console.error("Erro ao carregar eventos:", error);
-        toast({
-          title: "Erro ao carregar dados",
-          description: "Não foi possível buscar os eventos financeiros",
-          variant: "destructive",
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const carregarEventos = async () => {
+    try {
+      setIsLoading(true);
+      const data = await EventosService.getAll();
+      setEventos(data);
+    } catch (error) {
+      console.error("Erro ao carregar eventos:", error);
+      toast({
+        title: "Erro ao carregar dados",
+        description: "Não foi possível buscar os eventos financeiros",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  useEffect(() => {
     carregarEventos();
-  }, [toast]);
+  }, []);
 
   // Cálculos para os cards de resumo
   const totalEventos = eventos.length;
@@ -44,21 +43,16 @@ const Dashboard = () => {
   const valorTotal = eventos.reduce((acc, evento) => acc + evento.valor, 0);
   
   const eventosPagos = eventos.filter(
-    (evento) => evento.notaFiscalUrl !== undefined
+    (evento) => evento.status === "Pago"
   ).length;
   
   const eventosPendentes = eventos.filter(
-    (evento) => !evento.notaFiscalUrl && new Date(evento.dataPagamento) >= new Date()
-  ).length;
-  
-  const eventosAtrasados = eventos.filter(
-    (evento) => !evento.notaFiscalUrl && new Date(evento.dataPagamento) < new Date()
+    (evento) => evento.status === "Pendente"
   ).length;
 
   const eventosRecentes = eventos.slice(0, 5);
 
   const handleEdit = (evento: EventoFinanceiro) => {
-    // Redirecionar para a página de edição
     window.location.href = `/editar-evento/${evento.id}`;
   };
 
@@ -79,6 +73,19 @@ const Dashboard = () => {
         description: "Não foi possível excluir o evento",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleStatusChange = async (id: string, novoStatus: StatusPagamento) => {
+    try {
+      const eventoAtualizado = await EventosService.updateStatus(id, novoStatus);
+      if (eventoAtualizado) {
+        setEventos(eventos.map(evento => 
+          evento.id === id ? { ...evento, status: novoStatus } : evento
+        ));
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar status:", error);
     }
   };
 
@@ -112,30 +119,27 @@ const Dashboard = () => {
         />
         <StatusCard
           title="Eventos Pagos"
-          value={`${eventosPagos} (${Math.round((eventosPagos / totalEventos) * 100)}%)`}
-          icon={<FilePlus className="h-5 w-5" />}
-          description="Eventos com pagamento confirmado"
-          trend="up"
-          trendText="Concluídos"
+          value={`${eventosPagos} de ${totalEventos}`}
+          icon={<BarChart3 className="h-5 w-5" />}
+          description="Eventos financeiros pagos"
         />
         <StatusCard
           title="Eventos Pendentes"
-          value={eventosPendentes + eventosAtrasados}
-          icon={<Calendar className="h-5 w-5" />}
-          description={`${eventosAtrasados} atrasados`}
-          trend={eventosAtrasados > 0 ? "down" : "neutral"}
-          trendText={eventosAtrasados > 0 ? `${eventosAtrasados} atrasados` : "Em dia"}
+          value={`${eventosPendentes} de ${totalEventos}`}
+          icon={<BarChart3 className="h-5 w-5" />}
+          description="Eventos financeiros pendentes"
         />
       </div>
 
-      {/* Gráfico de visão geral */}
-      <OverviewChart
-        data={eventos}
-        title="Eventos Financeiros - Valor e Quantidade"
-        className="mb-6"
-      />
+      {/* Gráfico de resumo */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <OverviewChart
+          title="Resumo dos Eventos"
+          data={eventosRecentes}
+        />
+      </div>
 
-      {/* Tabela de eventos recentes */}
+      {/* Tabela de eventos */}
       <Card className="mb-6">
         <CardHeader>
           <h2 className="text-xl font-semibold">Eventos Recentes</h2>
@@ -145,6 +149,7 @@ const Dashboard = () => {
             eventos={eventosRecentes}
             onEdit={handleEdit}
             onDelete={handleDelete}
+            onStatusChange={handleStatusChange}
           />
           {eventos.length > 5 && (
             <div className="mt-4 text-center">

@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -56,19 +55,8 @@ export function EventosTable({
       return evento.status;
     }
     
-    // Caso contrário, calculamos com base nas regras anteriores
-    const dataAtual = new Date();
-    const dataPagamento = new Date(evento.dataPagamento);
-    
-    if (dataPagamento < dataAtual && !evento.notaFiscalUrl) {
-      return "Atrasado";
-    }
-    
-    if (evento.notaFiscalUrl) {
-      return "Pago";
-    }
-    
-    return "Pendente";
+    // Caso contrário, determinamos com base na nota fiscal
+    return evento.notaFiscalUrl ? "Pago" : "Pendente";
   };
 
   const getBadgeVariant = (status: StatusPagamento) => {
@@ -77,8 +65,6 @@ export function EventosTable({
         return "default" as const;
       case "Pendente":
         return "secondary" as const;
-      case "Atrasado":
-        return "destructive" as const;
       case "Cancelado":
         return "outline" as const;
       default:
@@ -110,7 +96,18 @@ export function EventosTable({
       setAtualizandoStatus(eventoId);
       
       // Atualizar o status no banco de dados
-      await EventosService.updateStatus(eventoId, novoStatus);
+      const eventoAtualizado = await EventosService.updateStatus(eventoId, novoStatus);
+      
+      if (!eventoAtualizado) {
+        throw new Error('Evento não encontrado após atualização');
+      }
+      
+      // Atualizar o evento na lista local
+      const eventosAtualizados = eventos.map(evento => 
+        evento.id === eventoId 
+          ? { ...evento, status: novoStatus }
+          : evento
+      );
       
       // Notificar o componente pai para atualizar a lista
       if (onStatusChange) {
@@ -125,7 +122,7 @@ export function EventosTable({
       console.error("Erro ao atualizar status:", error);
       toast({
         title: "Erro ao atualizar status",
-        description: "Não foi possível atualizar o status do evento",
+        description: error instanceof Error ? error.message : "Não foi possível atualizar o status do evento",
         variant: "destructive",
       });
     } finally {

@@ -20,6 +20,7 @@ export type Database = {
           motivo_evento: string
           nota_fiscal_url: string | null
           placa_veiculo: string
+          status: string | null
           updated_at: string
           valor: number
         }
@@ -33,6 +34,7 @@ export type Database = {
           motivo_evento: string
           nota_fiscal_url?: string | null
           placa_veiculo: string
+          status?: string | null
           updated_at?: string
           valor: number
         }
@@ -46,6 +48,7 @@ export type Database = {
           motivo_evento?: string
           nota_fiscal_url?: string | null
           placa_veiculo?: string
+          status?: string | null
           updated_at?: string
           valor?: number
         }

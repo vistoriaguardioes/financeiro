@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { EventoFinanceiro } from "@/types";
+import { EventoFinanceiro, StatusPagamento } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -12,6 +12,13 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Popover,
   PopoverContent,
@@ -35,6 +42,7 @@ const eventoSchema = z.object({
   dataEvento: z.date(),
   motivoEvento: z.string().min(1, "Motivo do evento é obrigatório"),
   dataPagamento: z.date(),
+  status: z.enum(["Pendente", "Pago"] as const),
 });
 
 interface EventoFormProps {
@@ -60,6 +68,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
       dataEvento: new Date(),
       motivoEvento: "",
       dataPagamento: new Date(),
+      status: "Pendente",
     },
   });
 
@@ -72,6 +81,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         dataEvento: new Date(eventoAtual.dataEvento),
         motivoEvento: eventoAtual.motivoEvento,
         dataPagamento: new Date(eventoAtual.dataPagamento),
+        status: eventoAtual.status as "Pendente" | "Pago" || "Pendente",
       });
     }
   }, [eventoAtual, form]);
@@ -90,6 +100,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         dataEvento: data.dataEvento.toISOString(),
         motivoEvento: data.motivoEvento,
         dataPagamento: data.dataPagamento.toISOString(),
+        status: data.status,
       };
       
       if (eventoAtual?.id) {
@@ -237,6 +248,28 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
 
           <FormField
             control={form.control}
+            name="status"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Status do Pagamento</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o status" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="Pendente">Pendente</SelectItem>
+                    <SelectItem value="Pago">Pago</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
             name="dataEvento"
             render={({ field }) => (
               <FormItem className="flex flex-col">
@@ -252,7 +285,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
                         )}
                       >
                         {field.value ? (
-                          format(field.value, "dd/MM/yyyy", { locale: ptBR })
+                          format(field.value, "PPP", { locale: ptBR })
                         ) : (
                           <span>Selecione uma data</span>
                         )}
@@ -265,8 +298,8 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
                       mode="single"
                       selected={field.value}
                       onSelect={field.onChange}
-                      initialFocus
                       locale={ptBR}
+                      initialFocus
                     />
                   </PopoverContent>
                 </Popover>
