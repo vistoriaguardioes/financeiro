@@ -78,10 +78,12 @@ export function EventosTable({ eventos, onEdit, onDelete }: EventosTableProps) {
       return;
     }
     
-    // Em uma implementação real, aqui seria feito o download do arquivo
+    // Abrir a URL em uma nova aba
+    window.open(url, '_blank');
+    
     toast({
       title: "Download iniciado",
-      description: `O download do ${tipo} começará em breve.`,
+      description: `O ${tipo} foi aberto em uma nova aba.`,
     });
   };
 

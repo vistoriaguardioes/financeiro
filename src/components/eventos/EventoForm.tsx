@@ -26,7 +26,8 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Download, FileText, Upload } from "lucide-react";
+import { CalendarIcon, Download, FileText, Loader2, Upload } from "lucide-react";
+import { EventosService } from "@/services/eventos-service";
 
 // Schema de validação do formulário
 const eventoSchema = z.object({
@@ -48,6 +49,8 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
   const { toast } = useToast();
   const [anexoNFe, setAnexoNFe] = useState<File | null>(null);
   const [anexoBoleto, setAnexoBoleto] = useState<File | null>(null);
+  const [uploadingNFe, setUploadingNFe] = useState(false);
+  const [uploadingBoleto, setUploadingBoleto] = useState(false);
 
   const form = useForm<z.infer<typeof eventoSchema>>({
     resolver: zodResolver(eventoSchema),
@@ -75,37 +78,93 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     }
   }, [eventoAtual, form]);
 
-  const handleFormSubmit = (data: z.infer<typeof eventoSchema>) => {
-    // Prepara os dados para envio
-    const eventoData: Partial<EventoFinanceiro> = {
-      ...eventoAtual,
-      fornecedor: data.fornecedor,
-      placaVeiculo: data.placaVeiculo,
-      valor: parseFloat(data.valor.replace(",", ".")),
-      dataEvento: data.dataEvento.toISOString(),
-      motivoEvento: data.motivoEvento,
-      dataPagamento: data.dataPagamento.toISOString(),
-    };
+  const handleFormSubmit = async (data: z.infer<typeof eventoSchema>) => {
+    try {
+      // Prepara os dados básicos do evento
+      const eventoData: Partial<EventoFinanceiro> = {
+        ...eventoAtual,
+        fornecedor: data.fornecedor,
+        placaVeiculo: data.placaVeiculo.toUpperCase(),
+        valor: parseFloat(data.valor.replace(",", ".")),
+        dataEvento: data.dataEvento.toISOString(),
+        motivoEvento: data.motivoEvento,
+        dataPagamento: data.dataPagamento.toISOString(),
+      };
 
-    // Simula o upload de arquivos
-    // Em uma implementação real, aqui seria feito o upload para o Supabase Storage
-    if (anexoNFe) {
+      // Se for um novo evento, primeiro criamos o registro para ter o ID
+      let eventoId = eventoAtual?.id;
+
+      if (!eventoId) {
+        const novoEvento = await EventosService.create(
+          eventoData as Omit<EventoFinanceiro, "id" | "createdAt" | "updatedAt">
+        );
+        eventoId = novoEvento.id;
+        eventoData.id = eventoId;
+      }
+
+      // Upload da Nota Fiscal se houver
+      if (anexoNFe && eventoId) {
+        setUploadingNFe(true);
+        try {
+          const nfeUrl = await EventosService.uploadArquivo(anexoNFe, 'nfe', eventoId);
+          if (nfeUrl) {
+            eventoData.notaFiscalUrl = nfeUrl;
+            toast({
+              title: "Nota fiscal enviada",
+              description: "O arquivo foi anexado com sucesso",
+            });
+          }
+        } catch (error) {
+          console.error("Erro ao fazer upload da NFe:", error);
+          toast({
+            title: "Erro ao enviar NFe",
+            description: "Não foi possível anexar a nota fiscal",
+            variant: "destructive",
+          });
+        } finally {
+          setUploadingNFe(false);
+        }
+      }
+
+      // Upload do Boleto se houver
+      if (anexoBoleto && eventoId) {
+        setUploadingBoleto(true);
+        try {
+          const boletoUrl = await EventosService.uploadArquivo(anexoBoleto, 'boleto', eventoId);
+          if (boletoUrl) {
+            eventoData.boletoUrl = boletoUrl;
+            toast({
+              title: "Boleto enviado",
+              description: "O arquivo foi anexado com sucesso",
+            });
+          }
+        } catch (error) {
+          console.error("Erro ao fazer upload do boleto:", error);
+          toast({
+            title: "Erro ao enviar boleto",
+            description: "Não foi possível anexar o boleto",
+            variant: "destructive",
+          });
+        } finally {
+          setUploadingBoleto(false);
+        }
+      }
+
+      // Se tivermos o ID (evento existente ou recém-criado), atualizamos se tiver anexos
+      if (eventoId && (anexoNFe || anexoBoleto)) {
+        await EventosService.update(eventoId, eventoData);
+      }
+
+      onSubmit(eventoData);
+
+    } catch (error) {
+      console.error("Erro ao processar formulário:", error);
       toast({
-        title: "Upload de NFe",
-        description: "Anexando nota fiscal...",
+        title: "Erro ao salvar",
+        description: "Ocorreu um erro ao processar os dados",
+        variant: "destructive",
       });
-      // eventoData.notaFiscalUrl = "url_simulada_nfe";
     }
-
-    if (anexoBoleto) {
-      toast({
-        title: "Upload de Boleto",
-        description: "Anexando boleto...",
-      });
-      // eventoData.boletoUrl = "url_simulada_boleto";
-    }
-
-    onSubmit(eventoData);
   };
 
   const handleFileChange = (
@@ -311,11 +370,16 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
                   variant="outline"
                   className="w-full"
                   onClick={() => document.getElementById("nfe")?.click()}
+                  disabled={uploadingNFe}
                 >
-                  <Upload className="mr-2 h-4 w-4" />
+                  {uploadingNFe ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="mr-2 h-4 w-4" />
+                  )}
                   {anexoNFe ? "Alterar NFe" : "Anexar NFe"}
                 </Button>
-                {anexoNFe && (
+                {anexoNFe && !uploadingNFe && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -330,6 +394,19 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
                 <p className="text-sm text-muted-foreground">
                   {anexoNFe.name} ({(anexoNFe.size / 1024).toFixed(2)} KB)
                 </p>
+              )}
+              {eventoAtual?.notaFiscalUrl && !anexoNFe && (
+                <div className="flex items-center mt-2">
+                  <FileText className="h-4 w-4 mr-2" />
+                  <a 
+                    href={eventoAtual.notaFiscalUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    Nota fiscal anexada
+                  </a>
+                </div>
               )}
             </div>
 
@@ -348,11 +425,16 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
                   variant="outline"
                   className="w-full"
                   onClick={() => document.getElementById("boleto")?.click()}
+                  disabled={uploadingBoleto}
                 >
-                  <Download className="mr-2 h-4 w-4" />
+                  {uploadingBoleto ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" />
+                  )}
                   {anexoBoleto ? "Alterar Boleto" : "Anexar Boleto"}
                 </Button>
-                {anexoBoleto && (
+                {anexoBoleto && !uploadingBoleto && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -367,6 +449,19 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
                 <p className="text-sm text-muted-foreground">
                   {anexoBoleto.name} ({(anexoBoleto.size / 1024).toFixed(2)} KB)
                 </p>
+              )}
+              {eventoAtual?.boletoUrl && !anexoBoleto && (
+                <div className="flex items-center mt-2">
+                  <FileText className="h-4 w-4 mr-2" />
+                  <a 
+                    href={eventoAtual.boletoUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    Boleto anexado
+                  </a>
+                </div>
               )}
             </div>
           </div>
@@ -385,8 +480,18 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={isLoading}>
-            {eventoAtual ? "Atualizar Evento" : "Cadastrar Evento"}
+          <Button 
+            type="submit" 
+            disabled={isLoading || uploadingNFe || uploadingBoleto}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {eventoAtual ? "Atualizando..." : "Cadastrando..."}
+              </>
+            ) : (
+              eventoAtual ? "Atualizar Evento" : "Cadastrar Evento"
+            )}
           </Button>
         </div>
       </form>
