@@ -82,10 +82,7 @@ export function AppSidebar() {
   ];
 
   return (
-    <Sidebar
-      defaultCollapsed={collapsed}
-      onCollapsedChange={(collapsed) => setCollapsed(collapsed)}
-    >
+    <Sidebar>
       <SidebarHeader className="flex items-center justify-center py-6">
         {!collapsed ? (
           <div className="text-xl font-semibold text-white">
@@ -103,8 +100,8 @@ export function AppSidebar() {
               {menuItems.map((item) => {
                 const isActive = location.pathname === item.url;
                 return (
-                  <SidebarMenuItem key={item.title} active={isActive}>
-                    <SidebarMenuButton asChild>
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild data-active={isActive}>
                       <Link to={item.url}>
                         <item.icon size={18} />
                         <span>{item.title}</span>
@@ -124,8 +121,8 @@ export function AppSidebar() {
               {settingsItems.map((item) => {
                 const isActive = location.pathname === item.url;
                 return (
-                  <SidebarMenuItem key={item.title} active={isActive}>
-                    <SidebarMenuButton asChild>
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild data-active={isActive}>
                       <Link to={item.url}>
                         <item.icon size={18} />
                         <span>{item.title}</span>
