@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -55,45 +54,16 @@ export function AppSidebar() {
       title: "Eventos Financeiros",
       url: "/eventos",
       icon: Calendar,
-    },
-    {
-      title: "Veículos",
-      url: "/veiculos",
-      icon: Truck,
-    },
-    {
-      title: "Fornecedores",
-      url: "/fornecedores",
-      icon: Users,
-    },
-    {
-      title: "Relatórios",
-      url: "/relatorios",
-      icon: BarChart3,
-    },
-    {
-      title: "Documentos",
-      url: "/documentos",
-      icon: FileText,
-    },
+    }
   ];
 
   const settingsItems = [
     {
-      title: "Configurações",
-      url: "/configuracoes",
-      icon: Settings,
-    },
-    {
-      title: "Suporte",
-      url: "/suporte",
-      icon: HelpCircle,
-    },
-    {
       title: "Sair",
       url: "#",
       icon: LogOut,
-      onClick: handleLogout
+      onClick: handleLogout,
+      description: "Desenvolvido por André Medeiros 48 998176626"
     }
   ];
 
@@ -155,6 +125,11 @@ export function AppSidebar() {
                         </Link>
                       )}
                     </SidebarMenuButton>
+                    {item.description && !collapsed && (
+                      <div className="text-xs text-sidebar-foreground/70 mt-1 px-4">
+                        {item.description}
+                      </div>
+                    )}
                   </SidebarMenuItem>
                 );
               })}

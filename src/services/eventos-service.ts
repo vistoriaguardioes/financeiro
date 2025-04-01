@@ -1,4 +1,3 @@
-
 import { EventoFinanceiro, FiltroEvento, StatusPagamento } from "@/types";
 import { supabase } from "@/integrations/supabase/client";
 import { v4 as uuidv4 } from "uuid";
@@ -279,5 +278,21 @@ export class EventosService {
       createdAt: item.created_at,
       updatedAt: item.updated_at,
     }));
+  }
+
+  // Buscar eventos por placa
+  static async buscarPorPlaca(placa: string): Promise<EventoFinanceiro[]> {
+    const { data, error } = await supabase
+      .from(this.TABLE_NAME)
+      .select('*')
+      .eq('placa_veiculo', placa.toUpperCase())
+      .order('data_evento', { ascending: false });
+    
+    if (error) {
+      console.error("Erro ao buscar eventos por placa:", error);
+      throw new Error(error.message);
+    }
+    
+    return this.mapFromSupabase(data || []);
   }
 }

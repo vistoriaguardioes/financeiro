@@ -34,6 +34,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, Download, FileText, Loader2, Upload } from "lucide-react";
 import { EventosService } from "@/services/eventos-service";
+import { Badge } from "@/components/ui/badge";
 
 const eventoSchema = z.object({
   fornecedor: z.string().min(1, "Fornecedor é obrigatório"),
@@ -58,6 +59,8 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
   const [uploadingNFe, setUploadingNFe] = useState(false);
   const [uploadingBoleto, setUploadingBoleto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [eventosPorPlaca, setEventosPorPlaca] = useState<EventoFinanceiro[]>([]);
+  const [carregandoHistorico, setCarregandoHistorico] = useState(false);
 
   const form = useForm<z.infer<typeof eventoSchema>>({
     resolver: zodResolver(eventoSchema),
@@ -189,6 +192,29 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     }
   };
 
+  // Função para buscar eventos por placa
+  const buscarEventosPorPlaca = async (placa: string) => {
+    if (placa.length < 7) {
+      setEventosPorPlaca([]);
+      return;
+    }
+
+    try {
+      setCarregandoHistorico(true);
+      const eventos = await EventosService.buscarPorPlaca(placa);
+      setEventosPorPlaca(eventos);
+    } catch (error) {
+      console.error("Erro ao buscar eventos por placa:", error);
+      toast({
+        title: "Erro ao buscar histórico",
+        description: "Não foi possível carregar o histórico da placa",
+        variant: "destructive",
+      });
+    } finally {
+      setCarregandoHistorico(false);
+    }
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleFormSubmit)} className="space-y-6">
@@ -218,9 +244,9 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
                     placeholder="ABC1234" 
                     {...field} 
                     onChange={(e) => {
-                      const value = e.target.value.toUpperCase();
-                      field.onChange(value);
-                    }} 
+                      field.onChange(e);
+                      buscarEventosPorPlaca(e.target.value);
+                    }}
                   />
                 </FormControl>
                 <FormMessage />
@@ -366,6 +392,37 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
             )}
           />
         </div>
+
+        {/* Histórico de eventos por placa */}
+        {eventosPorPlaca.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-4">Histórico de Eventos para esta Placa</h3>
+            <div className="bg-muted/50 rounded-lg p-4">
+              <div className="space-y-4">
+                {eventosPorPlaca.map((evento) => (
+                  <div key={evento.id} className="flex items-start justify-between border-b pb-2 last:border-0">
+                    <div>
+                      <p className="font-medium">{evento.motivoEvento}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {new Date(evento.dataEvento).toLocaleDateString('pt-BR')} - 
+                        R$ {evento.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <Badge variant={evento.status === 'Pago' ? 'default' : 'secondary'}>
+                      {evento.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {carregandoHistorico && (
+          <div className="flex items-center justify-center mt-4">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </div>
+        )}
 
         <div className="space-y-4">
           <h3 className="text-lg font-medium">Anexos</h3>
