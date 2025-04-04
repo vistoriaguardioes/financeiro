@@ -14,6 +14,7 @@ import { EventoFinanceiro, StatusPagamento } from "@/types";
 const Dashboard = () => {
   const [eventos, setEventos] = useState<EventoFinanceiro[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSorted, setIsSorted] = useState(false);
   const { toast } = useToast();
 
   const carregarEventos = async () => {
@@ -89,6 +90,26 @@ const Dashboard = () => {
     }
   };
 
+  const handleSort = (field: string, direction: 'desc') => {
+    setIsSorted(!isSorted);
+    
+    if (!isSorted) {
+      // Ordena do mais recente para o mais antigo
+      const eventosOrdenados = [...eventos].sort((a, b) => {
+        if (field === 'dataPagamento') {
+          const dateA = new Date(a.dataPagamento).getTime();
+          const dateB = new Date(b.dataPagamento).getTime();
+          return dateB - dateA;
+        }
+        return 0;
+      });
+      setEventos(eventosOrdenados);
+    } else {
+      // Volta para a ordem original
+      carregarEventos();
+    }
+  };
+
   return (
     <MainLayout>
       <div className="flex items-center justify-between mb-6">
@@ -150,6 +171,7 @@ const Dashboard = () => {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onStatusChange={handleStatusChange}
+            onSort={handleSort}
           />
           {eventos.length > 5 && (
             <div className="mt-4 text-center">

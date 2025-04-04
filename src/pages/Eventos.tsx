@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { EventosTable } from "@/components/eventos/EventosTable";
@@ -32,6 +31,7 @@ const Eventos = () => {
     placasVeiculo: [] as string[],
     motivosEvento: [] as string[],
   });
+  const [isSorted, setIsSorted] = useState(false);
   
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -173,6 +173,26 @@ const Eventos = () => {
     }
   };
 
+  const handleSort = (field: string, direction: 'desc') => {
+    setIsSorted(!isSorted);
+    
+    if (!isSorted) {
+      // Ordena do mais recente para o mais antigo
+      const eventosOrdenados = [...eventosFiltrados].sort((a, b) => {
+        if (field === 'dataPagamento') {
+          const dateA = new Date(a.dataPagamento).getTime();
+          const dateB = new Date(b.dataPagamento).getTime();
+          return dateB - dateA;
+        }
+        return 0;
+      });
+      setEventosFiltrados(eventosOrdenados);
+    } else {
+      // Volta para a ordem original
+      setEventosFiltrados([...eventos]);
+    }
+  };
+
   return (
     <MainLayout>
       <div className="flex items-center justify-between mb-6">
@@ -211,12 +231,15 @@ const Eventos = () => {
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : (
-        <EventosTable
-          eventos={eventosFiltrados}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onStatusChange={handleStatusChange}
-        />
+        <div className="mt-6">
+          <EventosTable
+            eventos={eventosFiltrados}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onStatusChange={handleStatusChange}
+            onSort={handleSort}
+          />
+        </div>
       )}
       
       <AlertDialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>

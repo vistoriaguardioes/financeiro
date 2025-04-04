@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, Download, FileText, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Check, Download, FileText, MoreVertical, Pencil, Trash2, ArrowUpDown } from "lucide-react";
 import { EventoFinanceiro, StatusPagamento } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,16 +31,26 @@ interface EventosTableProps {
   onEdit: (evento: EventoFinanceiro) => void;
   onDelete: (id: string) => void;
   onStatusChange?: (id: string, novoStatus: StatusPagamento) => void;
+  onSort?: (field: string, direction: 'asc' | 'desc') => void;
 }
 
 export function EventosTable({ 
   eventos, 
   onEdit, 
   onDelete, 
-  onStatusChange 
+  onStatusChange,
+  onSort 
 }: EventosTableProps) {
   const { toast } = useToast();
   const [atualizandoStatus, setAtualizandoStatus] = useState<string | null>(null);
+  const [isSorted, setIsSorted] = useState(false);
+
+  const handleSort = () => {
+    setIsSorted(!isSorted);
+    if (onSort) {
+      onSort('dataPagamento', isSorted ? 'desc' : 'desc');
+    }
+  };
 
   const formataMoeda = (valor: number) => {
     return new Intl.NumberFormat("pt-BR", {
@@ -140,7 +150,22 @@ export function EventosTable({
             <TableHead>Placa</TableHead>
             <TableHead>Valor</TableHead>
             <TableHead>Data Evento</TableHead>
-            <TableHead>Data Pagamento</TableHead>
+            <TableHead>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSort}
+                className="flex items-center gap-1 hover:bg-accent"
+              >
+                Data Pagamento
+                <ArrowUpDown className="h-4 w-4" />
+                {isSorted && (
+                  <span className="text-xs">
+                    ↓
+                  </span>
+                )}
+              </Button>
+            </TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Documentos</TableHead>
             <TableHead className="text-right">Ações</TableHead>
