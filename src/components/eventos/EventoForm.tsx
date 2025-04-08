@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { EventoFinanceiro, StatusPagamento } from "@/types";
+import { EventoFinanceiro, StatusPagamento, ArquivoBoleto } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -37,6 +37,7 @@ import { EventosService } from "@/services/eventos-service";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../integrations/supabase/client';
+import { Label } from "@/components/ui/label";
 
 const eventoSchema = z.object({
   fornecedor: z.string().min(1, "Fornecedor é obrigatório"),
@@ -46,7 +47,11 @@ const eventoSchema = z.object({
   motivoEvento: z.string().min(1, "Motivo do evento é obrigatório"),
   dataPagamento: z.date(),
   status: z.enum(["Pendente", "Pago"] as const),
-  boletoUrls: z.array(z.string()).optional(),
+  boletos: z.array(z.object({
+    nome: z.string(),
+    url: z.string(),
+    dataVencimento: z.string()
+  })).optional(),
 });
 
 interface EventoFormProps {
@@ -66,6 +71,14 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
   const navigate = useNavigate();
   const { id } = useParams();
+  const [boletos, setBoletos] = useState<ArquivoBoleto[]>([]);
+  const [boletoTemporario, setBoletoTemporario] = useState<{
+    file: File | null;
+    dataVencimento: string;
+  }>({
+    file: null,
+    dataVencimento: ''
+  });
 
   const form = useForm<z.infer<typeof eventoSchema>>({
     resolver: zodResolver(eventoSchema),
@@ -77,7 +90,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
       motivoEvento: "",
       dataPagamento: new Date(),
       status: "Pendente",
-      boletoUrls: [],
+      boletos: [],
     },
   });
 
@@ -91,7 +104,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         motivoEvento: eventoAtual.motivoEvento,
         dataPagamento: new Date(eventoAtual.dataPagamento),
         status: eventoAtual.status as "Pendente" | "Pago" || "Pendente",
-        boletoUrls: eventoAtual.boletoUrls || [],
+        boletos: eventoAtual.boletos || [],
       });
     }
   }, [eventoAtual, form]);
@@ -129,7 +142,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         motivoEvento: data.motivoEvento,
         dataPagamento: data.dataPagamento.toISOString(),
         status: data.status,
-        boletoUrls: data.boletoUrls || [],
+        boletoUrls: data.boletos?.map(b => b.url) || [],
       };
       
       if (eventoAtual?.id) {
@@ -252,41 +265,105 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBoletoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
-    const urls = [...(form.getValues('boletoUrls') || [])];
-    
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `boletos/${fileName}`;
+    const file = files[0];
+    if (!file) return;
 
-      const { error: uploadError } = await supabase.storage
-        .from('boletos')
-        .upload(filePath, file);
+    setBoletoTemporario(prev => ({
+      ...prev,
+      file
+    }));
+  };
 
-      if (uploadError) {
-        console.error('Erro ao fazer upload do boleto:', uploadError);
-        continue;
-      }
-
-      const { data } = supabase.storage
-        .from('boletos')
-        .getPublicUrl(filePath);
-
-      urls.push(data.publicUrl);
+  const handleAdicionarBoleto = async () => {
+    if (!boletoTemporario.file || !boletoTemporario.dataVencimento) {
+      toast({
+        title: "Erro",
+        description: "Selecione um arquivo e uma data de vencimento",
+        variant: "destructive",
+      });
+      return;
     }
 
-    form.reset(prev => ({ ...prev, boletoUrls: urls }));
+    const file = boletoTemporario.file;
+    const fileExt = file.name.split('.').pop()?.toLowerCase();
+    
+    if (fileExt && ['pdf', 'jpg', 'jpeg', 'png'].includes(fileExt)) {
+      try {
+        console.log('Iniciando upload do arquivo:', file.name);
+        const fileName = `${Date.now()}-${file.name}`;
+        const filePath = `boletos/${fileName}`;
+
+        // Primeiro, fazemos o upload do arquivo
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('documentos')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || 'application/pdf'
+          });
+
+        if (uploadError) {
+          console.error('Erro detalhado do upload:', uploadError);
+          toast({
+            title: "Erro",
+            description: `Não foi possível fazer o upload do boleto: ${uploadError.message}`,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        console.log('Upload concluído com sucesso:', uploadData);
+
+        // Depois, obtemos a URL pública do arquivo
+        const { data: { publicUrl } } = supabase.storage
+          .from('documentos')
+          .getPublicUrl(filePath);
+
+        console.log('URL pública gerada:', publicUrl);
+
+        const novoBoleto = {
+          nome: file.name,
+          url: publicUrl,
+          dataVencimento: boletoTemporario.dataVencimento // Usar a data diretamente sem manipulação
+        };
+
+        setBoletos([...boletos, novoBoleto]);
+        form.setValue('boletos', [...(form.getValues('boletos') || []), novoBoleto]);
+
+        setBoletoTemporario({
+          file: null,
+          dataVencimento: ''
+        });
+
+        toast({
+          title: "Sucesso",
+          description: "Boleto adicionado com sucesso",
+        });
+      } catch (error) {
+        console.error('Erro completo ao processar boleto:', error);
+        toast({
+          title: "Erro",
+          description: "Ocorreu um erro ao processar o boleto. Por favor, tente novamente.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "Erro",
+        description: "Formato de arquivo não suportado. Use PDF, JPG ou PNG.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleRemoveBoleto = (index: number) => {
     form.reset(prev => ({
       ...prev,
-      boletoUrls: prev.boletoUrls?.filter((_, i) => i !== index)
+      boletos: prev.boletos?.filter((_, i) => i !== index)
     }));
   };
 
@@ -563,40 +640,49 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
                   <Input
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={handleFileUpload}
-                    multiple
+                    onChange={handleBoletoChange}
                     className="cursor-pointer"
                   />
-                  {uploadingBoleto && (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  )}
+                  <Input
+                    type="date"
+                    value={boletoTemporario.dataVencimento}
+                    onChange={(e) => setBoletoTemporario(prev => ({
+                      ...prev,
+                      dataVencimento: e.target.value
+                    }))}
+                    className="w-40"
+                  />
+                  <Button
+                    type="button"
+                    onClick={handleAdicionarBoleto}
+                    disabled={!boletoTemporario.file || !boletoTemporario.dataVencimento}
+                  >
+                    Adicionar Boleto
+                  </Button>
                 </div>
                 
                 {/* Lista de boletos selecionados */}
-                {form.getValues('boletoUrls')?.length > 0 && (
+                {boletos.length > 0 && (
                   <div className="space-y-2">
-                    {form.getValues('boletoUrls').map((url, index) => (
-                      <div key={index} className="flex items-center justify-between p-2 border rounded-md">
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-4 w-4" />
-                          <span className="text-sm">
-                            <a
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-indigo-600 hover:text-indigo-500"
-                            >
-                              Boleto {index + 1}
-                            </a>
+                    {boletos.map((boleto, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <div className="flex items-center space-x-2">
+                          <FileText className="h-4 w-4 text-gray-500" />
+                          <span className="text-sm">{boleto.nome}</span>
+                          <span className="text-xs text-gray-500">
+                            (Vencimento: {boleto.dataVencimento.split('-').reverse().join('/')})
                           </span>
                         </div>
                         <Button
-                          type="button"
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRemoveBoleto(index)}
+                          onClick={() => {
+                            const novosBoletos = [...boletos];
+                            novosBoletos.splice(index, 1);
+                            setBoletos(novosBoletos);
+                          }}
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4 text-red-500" />
                         </Button>
                       </div>
                     ))}
@@ -618,6 +704,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
               form.reset();
               setAnexoNFe(null);
               setAnexosBoleto([]);
+              setBoletos([]);
             }}
           >
             Cancelar

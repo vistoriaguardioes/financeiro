@@ -12,6 +12,7 @@ export interface EventoFinanceiro {
   notaFiscalUrl?: string;
   boletoUrl?: string;
   boletoUrls?: string[];
+  boletos?: ArquivoBoleto[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -48,4 +49,10 @@ export interface ConfiguracaoRelatorio {
   dataFim: string;
   incluirAnexos: boolean;
   orientacao: OrientacaoExportacao;
+}
+
+export interface ArquivoBoleto {
+  nome: string;
+  url: string;
+  dataVencimento: string;
 }
