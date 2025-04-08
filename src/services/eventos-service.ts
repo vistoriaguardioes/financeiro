@@ -295,4 +295,57 @@ export class EventosService {
     
     return this.mapFromSupabase(data || []);
   }
+
+  async listarEventos(): Promise<EventoFinanceiro[]> {
+    const { data, error } = await supabase
+      .from(this.TABLE_NAME)
+      .select('*')
+      .order('data_evento', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
+
+  async criarEvento(evento: Omit<EventoFinanceiro, 'id'>): Promise<EventoFinanceiro> {
+    const { data, error } = await supabase
+      .from(this.TABLE_NAME)
+      .insert([evento])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async atualizarEvento(id: string, evento: Partial<EventoFinanceiro>): Promise<EventoFinanceiro> {
+    const { data, error } = await supabase
+      .from(this.TABLE_NAME)
+      .update(evento)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  async deletarEvento(id: string): Promise<void> {
+    const { error } = await supabase
+      .from(this.TABLE_NAME)
+      .delete()
+      .eq('id', id);
+
+    if (error) throw error;
+  }
+
+  async buscarEventosPorPlaca(placa: string): Promise<EventoFinanceiro[]> {
+    const { data, error } = await supabase
+      .from(this.TABLE_NAME)
+      .select('*')
+      .ilike('placa_veiculo', `%${placa}%`)
+      .order('data_evento', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  }
 }

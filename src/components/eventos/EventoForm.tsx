@@ -32,9 +32,11 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, Download, FileText, Loader2, Upload } from "lucide-react";
+import { CalendarIcon, Download, FileText, Loader2, Upload, Trash2 } from "lucide-react";
 import { EventosService } from "@/services/eventos-service";
 import { Badge } from "@/components/ui/badge";
+import { useNavigate, useParams } from 'react-router-dom';
+import { supabase } from '../../integrations/supabase/client';
 
 const eventoSchema = z.object({
   fornecedor: z.string().min(1, "Fornecedor é obrigatório"),
@@ -44,6 +46,7 @@ const eventoSchema = z.object({
   motivoEvento: z.string().min(1, "Motivo do evento é obrigatório"),
   dataPagamento: z.date(),
   status: z.enum(["Pendente", "Pago"] as const),
+  boletoUrls: z.array(z.string()).optional(),
 });
 
 interface EventoFormProps {
@@ -55,12 +58,14 @@ interface EventoFormProps {
 export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps) {
   const { toast } = useToast();
   const [anexoNFe, setAnexoNFe] = useState<File | null>(null);
-  const [anexoBoleto, setAnexoBoleto] = useState<File | null>(null);
+  const [anexosBoleto, setAnexosBoleto] = useState<File[]>([]);
   const [uploadingNFe, setUploadingNFe] = useState(false);
   const [uploadingBoleto, setUploadingBoleto] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [eventosPorPlaca, setEventosPorPlaca] = useState<EventoFinanceiro[]>([]);
   const [carregandoHistorico, setCarregandoHistorico] = useState(false);
+  const navigate = useNavigate();
+  const { id } = useParams();
 
   const form = useForm<z.infer<typeof eventoSchema>>({
     resolver: zodResolver(eventoSchema),
@@ -72,6 +77,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
       motivoEvento: "",
       dataPagamento: new Date(),
       status: "Pendente",
+      boletoUrls: [],
     },
   });
 
@@ -85,9 +91,28 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         motivoEvento: eventoAtual.motivoEvento,
         dataPagamento: new Date(eventoAtual.dataPagamento),
         status: eventoAtual.status as "Pendente" | "Pago" || "Pendente",
+        boletoUrls: eventoAtual.boletoUrls || [],
       });
     }
   }, [eventoAtual, form]);
+
+  useEffect(() => {
+    if (id) {
+      carregarEvento();
+    }
+  }, [id]);
+
+  const carregarEvento = async () => {
+    try {
+      const eventos = await EventosService.listarEventos();
+      const eventoEncontrado = eventos.find(e => e.id === id);
+      if (eventoEncontrado) {
+        form.reset(eventoEncontrado);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar evento:', error);
+    }
+  };
 
   const handleFormSubmit = async (data: z.infer<typeof eventoSchema>) => {
     if (submitting || isLoading) return;
@@ -104,6 +129,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         motivoEvento: data.motivoEvento,
         dataPagamento: data.dataPagamento.toISOString(),
         status: data.status,
+        boletoUrls: data.boletoUrls || [],
       };
       
       if (eventoAtual?.id) {
@@ -133,22 +159,28 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         }
       }
 
-      if (anexoBoleto) {
+      if (anexosBoleto.length > 0) {
         setUploadingBoleto(true);
         try {
-          const boletoUrl = await EventosService.uploadArquivo(anexoBoleto, 'boleto', eventoAtual?.id || '');
-          if (boletoUrl) {
-            eventoData.boletoUrl = boletoUrl;
+          const boletoUrls = await Promise.all(
+            anexosBoleto.map(file => 
+              EventosService.uploadArquivo(file, 'boleto', eventoAtual?.id || '')
+            )
+          );
+          
+          if (boletoUrls.length > 0) {
+            eventoData.boletoUrl = boletoUrls[0]; // Mantém o primeiro boleto como principal
+            eventoData.boletoUrls = boletoUrls; // Armazena todos os URLs dos boletos
             toast({
-              title: "Boleto enviado",
-              description: "O arquivo foi anexado com sucesso",
+              title: "Boletos enviados",
+              description: `${boletoUrls.length} boleto(s) anexado(s) com sucesso`,
             });
           }
         } catch (error) {
-          console.error("Erro ao fazer upload do boleto:", error);
+          console.error("Erro ao fazer upload dos boletos:", error);
           toast({
-            title: "Erro ao enviar boleto",
-            description: "Não foi possível anexar o boleto",
+            title: "Erro ao enviar boletos",
+            description: "Não foi possível anexar os boletos",
             variant: "destructive",
           });
         } finally {
@@ -174,22 +206,27 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     event: React.ChangeEvent<HTMLInputElement>,
     tipo: "nfe" | "boleto"
   ) => {
-    const file = event.target.files?.[0];
-    if (file) {
+    const files = event.target.files;
+    if (files) {
       if (tipo === "nfe") {
-        setAnexoNFe(file);
+        setAnexoNFe(files[0]);
         toast({
           title: "Nota Fiscal Selecionada",
-          description: `${file.name} (${(file.size / 1024).toFixed(2)} KB)`,
+          description: `${files[0].name} (${(files[0].size / 1024).toFixed(2)} KB)`,
         });
       } else {
-        setAnexoBoleto(file);
+        const novosBoletos = Array.from(files);
+        setAnexosBoleto(prev => [...prev, ...novosBoletos]);
         toast({
-          title: "Boleto Selecionado",
-          description: `${file.name} (${(file.size / 1024).toFixed(2)} KB)`,
+          title: "Boletos Selecionados",
+          description: `${novosBoletos.length} boleto(s) adicionado(s)`,
         });
       }
     }
+  };
+
+  const removerBoleto = (index: number) => {
+    setAnexosBoleto(prev => prev.filter((_, i) => i !== index));
   };
 
   // Função para buscar eventos por placa
@@ -213,6 +250,44 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     } finally {
       setCarregandoHistorico(false);
     }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const urls = [...(form.getValues('boletoUrls') || [])];
+    
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `boletos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('boletos')
+        .upload(filePath, file);
+
+      if (uploadError) {
+        console.error('Erro ao fazer upload do boleto:', uploadError);
+        continue;
+      }
+
+      const { data } = supabase.storage
+        .from('boletos')
+        .getPublicUrl(filePath);
+
+      urls.push(data.publicUrl);
+    }
+
+    form.reset(prev => ({ ...prev, boletoUrls: urls }));
+  };
+
+  const handleRemoveBoleto = (index: number) => {
+    form.reset(prev => ({
+      ...prev,
+      boletoUrls: prev.boletoUrls?.filter((_, i) => i !== index)
+    }));
   };
 
   return (
@@ -482,57 +557,55 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
             </div>
 
             <div className="space-y-2">
-              <FormLabel htmlFor="boleto">Boleto de Pagamento</FormLabel>
-              <div className="flex items-center space-x-2">
-                <Input
-                  id="boleto"
-                  type="file"
-                  className="hidden"
-                  onChange={(e) => handleFileChange(e, "boleto")}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => document.getElementById("boleto")?.click()}
-                  disabled={uploadingBoleto}
-                >
-                  {uploadingBoleto ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Download className="mr-2 h-4 w-4" />
+              <FormLabel>Boletos</FormLabel>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={handleFileUpload}
+                    multiple
+                    className="cursor-pointer"
+                  />
+                  {uploadingBoleto && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   )}
-                  {anexoBoleto ? "Alterar Boleto" : "Anexar Boleto"}
-                </Button>
-                {anexoBoleto && !uploadingBoleto && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setAnexoBoleto(null)}
-                  >
-                    Remover
-                  </Button>
+                </div>
+                
+                {/* Lista de boletos selecionados */}
+                {form.getValues('boletoUrls')?.length > 0 && (
+                  <div className="space-y-2">
+                    {form.getValues('boletoUrls').map((url, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 border rounded-md">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          <span className="text-sm">
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:text-indigo-500"
+                            >
+                              Boleto {index + 1}
+                            </a>
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleRemoveBoleto(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-              {anexoBoleto && (
-                <p className="text-sm text-muted-foreground">
-                  {anexoBoleto.name} ({(anexoBoleto.size / 1024).toFixed(2)} KB)
-                </p>
-              )}
-              {eventoAtual?.boletoUrl && !anexoBoleto && (
-                <div className="flex items-center mt-2">
-                  <FileText className="h-4 w-4 mr-2" />
-                  <a 
-                    href={eventoAtual.boletoUrl} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-sm text-blue-600 hover:underline"
-                  >
-                    Boleto anexado
-                  </a>
-                </div>
-              )}
+              <FormDescription>
+                Você pode adicionar múltiplos boletos. Formatos aceitos: PDF, JPG, PNG.
+              </FormDescription>
             </div>
           </div>
         </div>
@@ -544,7 +617,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
             onClick={() => {
               form.reset();
               setAnexoNFe(null);
-              setAnexoBoleto(null);
+              setAnexosBoleto([]);
             }}
           >
             Cancelar

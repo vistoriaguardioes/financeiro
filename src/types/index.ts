@@ -1,4 +1,3 @@
-
 // Definindo os tipos para a aplicação
 
 export interface EventoFinanceiro {
@@ -9,11 +8,12 @@ export interface EventoFinanceiro {
   dataEvento: string;
   motivoEvento: string;
   dataPagamento: string;
+  status: StatusPagamento;
   notaFiscalUrl?: string;
   boletoUrl?: string;
-  status?: StatusPagamento;
-  createdAt: string;
-  updatedAt: string;
+  boletoUrls?: string[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FiltroEvento {
@@ -22,9 +22,10 @@ export interface FiltroEvento {
   fornecedor?: string;
   placaVeiculo?: string;
   motivoEvento?: string;
+  status?: StatusPagamento;
 }
 
-export type StatusPagamento = 'Pendente' | 'Pago' | 'Atrasado' | 'Cancelado';
+export type StatusPagamento = "Pendente" | "Pago" | "Cancelado";
 
 export interface ResumoFinanceiro {
   totalEventos: number;
