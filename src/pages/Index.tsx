@@ -10,6 +10,9 @@ import { Link } from "react-router-dom";
 import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { EventoFinanceiro, StatusPagamento } from "@/types";
+import { PieChart, Pie, Cell, Legend, ResponsiveContainer, Tooltip } from 'recharts';
+
+const COLORS = ['#22c55e', '#fbbf24', '#3b82f6', '#ef4444', '#a855f7', '#f472b6', '#14b8a6', '#f59e42'];
 
 const Dashboard = () => {
   const [eventos, setEventos] = useState<EventoFinanceiro[]>([]);
@@ -40,17 +43,11 @@ const Dashboard = () => {
 
   // Cálculos para os cards de resumo
   const totalEventos = eventos.length;
-  
   const valorTotal = eventos.reduce((acc, evento) => acc + evento.valor, 0);
-  
-  const eventosPagos = eventos.filter(
-    (evento) => evento.status === "Pago"
-  ).length;
-  
-  const eventosPendentes = eventos.filter(
-    (evento) => evento.status === "Pendente"
-  ).length;
-
+  const valorTotalPago = eventos.filter(e => e.status === 'Pago').reduce((acc, evento) => acc + evento.valor, 0);
+  const valorTotalPendente = eventos.filter(e => e.status === 'Pendente').reduce((acc, evento) => acc + evento.valor, 0);
+  const eventosPagos = eventos.filter((evento) => evento.status === "Pago").length;
+  const eventosPendentes = eventos.filter((evento) => evento.status === "Pendente").length;
   const eventosRecentes = eventos.slice(0, 5);
 
   const handleEdit = (evento: EventoFinanceiro) => {
@@ -110,60 +107,82 @@ const Dashboard = () => {
     }
   };
 
+  // Agrupa valores por fornecedor
+  const fornecedoresMap: { [fornecedor: string]: number } = {};
+  eventos.forEach(evento => {
+    if (!fornecedoresMap[evento.fornecedor]) {
+      fornecedoresMap[evento.fornecedor] = 0;
+    }
+    fornecedoresMap[evento.fornecedor] += evento.valor;
+  });
+  const pieDataFornecedor = Object.entries(fornecedoresMap).map(([name, value]) => ({
+    name,
+    value
+  }));
+
   return (
     <MainLayout>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="text-3xl font-extrabold tracking-tight text-gray-900">Dashboard</h1>
         <Link to="/novo-evento">
-          <Button>
-            <Plus className="mr-1 h-4 w-4" /> Novo Evento
+          <Button className="rounded-full px-6 py-2 bg-gradient-to-r from-blue-500 to-green-400 text-white shadow-lg hover:from-blue-600 hover:to-green-500 transition-all">
+            <Plus className="mr-2 h-5 w-5" /> Novo Evento
           </Button>
         </Link>
       </div>
 
-      {/* Cards de resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <StatusCard
-          title="Total de Eventos"
-          value={totalEventos}
-          icon={<Calendar className="h-5 w-5" />}
-          description="Eventos financeiros registrados"
-        />
-        <StatusCard
-          title="Valor Total"
-          value={new Intl.NumberFormat("pt-BR", {
-            style: "currency",
-            currency: "BRL",
-          }).format(valorTotal)}
-          icon={<BarChart3 className="h-5 w-5" />}
-          description="Soma de todos os eventos"
-        />
-        <StatusCard
-          title="Eventos Pagos"
-          value={`${eventosPagos} de ${totalEventos}`}
-          icon={<BarChart3 className="h-5 w-5" />}
-          description="Eventos financeiros pagos"
-        />
-        <StatusCard
-          title="Eventos Pendentes"
-          value={`${eventosPendentes} de ${totalEventos}`}
-          icon={<BarChart3 className="h-5 w-5" />}
-          description="Eventos financeiros pendentes"
-        />
+      {/* Cards de valores pagos e pendentes */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+        <div className="bg-white rounded-2xl shadow-xl p-8 flex flex-col items-center justify-center">
+          <span className="text-lg font-semibold text-gray-500 mb-2">Valor Pago</span>
+          <span className="text-3xl font-bold text-green-500 mb-1">
+            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valorTotalPago)}
+          </span>
+          <span className="text-xs text-gray-400">Soma dos eventos pagos</span>
+        </div>
+        <div className="bg-white rounded-2xl shadow-xl p-8 flex flex-col items-center justify-center">
+          <span className="text-lg font-semibold text-gray-500 mb-2">Valor Pendente</span>
+          <span className="text-3xl font-bold text-yellow-500 mb-1">
+            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valorTotalPendente)}
+          </span>
+          <span className="text-xs text-gray-400">Soma dos eventos pendentes</span>
+        </div>
       </div>
 
-      {/* Gráfico de resumo */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-        <OverviewChart
-          title="Resumo dos Eventos"
-          data={eventosRecentes}
-        />
+      {/* Gráfico de pizza por fornecedor */}
+      <div className="flex justify-center mb-10">
+        <div className="w-full max-w-xl bg-white rounded-2xl shadow-xl p-8">
+          <h2 className="text-xl font-bold mb-6 text-center text-gray-700">Distribuição por Fornecedor</h2>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={pieDataFornecedor}
+                dataKey="value"
+                nameKey="name"
+                cx="50%"
+                cy="50%"
+                outerRadius={100}
+              >
+                {pieDataFornecedor.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip
+                formatter={(value, name, props) => [
+                  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value as number),
+                  props.payload.name
+                ]}
+              />
+              <Legend verticalAlign="bottom" height={36} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Tabela de eventos */}
-      <Card className="mb-6">
+      <Card className="mb-6 bg-white rounded-2xl shadow-xl">
         <CardHeader>
-          <h2 className="text-xl font-semibold">Eventos Recentes</h2>
+          <h2 className="text-xl font-semibold text-gray-700">Eventos Recentes</h2>
         </CardHeader>
         <CardContent>
           <EventosTable
