@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, Download, FileText, MoreVertical, Pencil, Trash2, ArrowUpDown } from "lucide-react";
+import { Check, Download, FileText, MoreVertical, Pencil, Trash2, ArrowUpDown, Upload } from "lucide-react";
 import { EventoFinanceiro, StatusPagamento } from "@/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +25,18 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { EventosService } from "@/services/eventos-service";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Input,
+} from "@/components/ui/input";
+import {
+  Loader2,
+} from "lucide-react";
+import { supabase } from '../../integrations/supabase/client';
 
 interface EventosTableProps {
   eventos: EventoFinanceiro[];
@@ -32,6 +44,7 @@ interface EventosTableProps {
   onDelete: (id: string) => void;
   onStatusChange?: (id: string, novoStatus: StatusPagamento) => void;
   onSort?: (field: string, direction: 'asc' | 'desc') => void;
+  onEventoUpdated?: (evento: EventoFinanceiro) => void;
 }
 
 export function EventosTable({ 
@@ -39,11 +52,15 @@ export function EventosTable({
   onEdit, 
   onDelete, 
   onStatusChange,
-  onSort 
+  onSort,
+  onEventoUpdated
 }: EventosTableProps) {
   const { toast } = useToast();
   const [atualizandoStatus, setAtualizandoStatus] = useState<string | null>(null);
   const [isSorted, setIsSorted] = useState(false);
+  const [uploadingComprovanteId, setUploadingComprovanteId] = useState<string | null>(null);
+  const [comprovanteFile, setComprovanteFile] = useState<File | null>(null);
+  const [dataPagamentoComprovante, setDataPagamentoComprovante] = useState<string>('');
 
   const handleSort = () => {
     setIsSorted(!isSorted);
@@ -140,6 +157,76 @@ export function EventosTable({
     }
   };
 
+  const handleComprovanteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    setComprovanteFile(files[0]);
+  };
+
+  const handleAdicionarComprovante = async (eventoId: string) => {
+    if (!comprovanteFile || !dataPagamentoComprovante) {
+      toast({
+        title: "Erro",
+        description: "Selecione um arquivo e uma data de pagamento",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      setUploadingComprovanteId(eventoId);
+      const fileName = `${Date.now()}-${comprovanteFile.name}`;
+      const filePath = `comprovantes/${fileName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('documentos')
+        .upload(filePath, comprovanteFile, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: comprovanteFile.type || 'application/pdf'
+        });
+      if (uploadError) {
+        toast({
+          title: "Erro",
+          description: `Não foi possível fazer o upload do comprovante: ${uploadError.message}`,
+          variant: "destructive",
+        });
+        return;
+      }
+      const { data: { publicUrl } } = supabase.storage
+        .from('documentos')
+        .getPublicUrl(filePath);
+      // Atualizar o evento no banco (adicionando comprovante)
+      const { error: updateError } = await supabase
+        .from('eventos_financeiros')
+        .update({
+          comprovantes: [{ nome: comprovanteFile.name, url: publicUrl, dataPagamento: dataPagamentoComprovante }]
+        })
+        .eq('id', eventoId);
+      if (updateError) {
+        toast({
+          title: "Erro",
+          description: "Não foi possível adicionar o comprovante ao evento",
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({
+        title: "Sucesso",
+        description: "Comprovante adicionado com sucesso",
+      });
+      setComprovanteFile(null);
+      setDataPagamentoComprovante('');
+      setUploadingComprovanteId(null);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Ocorreu um erro ao processar o comprovante",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingComprovanteId(null);
+    }
+  };
+
   return (
     <div className="rounded-md border">
       <Table>
@@ -232,6 +319,44 @@ export function EventosTable({
                         <Download className="h-4 w-4 mr-1" />
                         Boleto
                       </Button>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            <Upload className="h-4 w-4 mr-1" />
+                            CP
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80">
+                          <div className="space-y-2">
+                            <Input
+                              type="file"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={handleComprovanteChange}
+                              className="cursor-pointer"
+                            />
+                            <Input
+                              type="date"
+                              value={dataPagamentoComprovante}
+                              onChange={e => setDataPagamentoComprovante(e.target.value)}
+                              className="w-full"
+                            />
+                            <Button
+                              onClick={() => handleAdicionarComprovante(evento.id)}
+                              disabled={!comprovanteFile || !dataPagamentoComprovante || uploadingComprovanteId === evento.id}
+                              className="w-full"
+                            >
+                              {uploadingComprovanteId === evento.id ? (
+                                <>
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  Enviando...
+                                </>
+                              ) : (
+                                "Adicionar Comprovante"
+                              )}
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   </TableCell>
                   <TableCell className="guardioes-table-cell text-right">

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { EventoFinanceiro, StatusPagamento, ArquivoBoleto } from "@/types";
+import { EventoFinanceiro, StatusPagamento, ArquivoBoleto, ComprovantePagamento } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -52,6 +52,11 @@ const eventoSchema = z.object({
     url: z.string(),
     dataVencimento: z.string()
   })).optional(),
+  comprovantes: z.array(z.object({
+    nome: z.string(),
+    url: z.string(),
+    dataPagamento: z.string()
+  })).optional(),
 });
 
 interface EventoFormProps {
@@ -79,6 +84,14 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     file: null,
     dataVencimento: ''
   });
+  const [comprovantes, setComprovantes] = useState<ComprovantePagamento[]>([]);
+  const [comprovanteTemporario, setComprovanteTemporario] = useState<{
+    file: File | null;
+    dataPagamento: string;
+  }>({
+    file: null,
+    dataPagamento: ''
+  });
 
   const form = useForm<z.infer<typeof eventoSchema>>({
     resolver: zodResolver(eventoSchema),
@@ -91,6 +104,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
       dataPagamento: new Date(),
       status: "Pendente",
       boletos: [],
+      comprovantes: [],
     },
   });
 
@@ -105,6 +119,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         dataPagamento: new Date(eventoAtual.dataPagamento),
         status: eventoAtual.status as "Pendente" | "Pago" || "Pendente",
         boletos: eventoAtual.boletos || [],
+        comprovantes: eventoAtual.comprovantes || [],
       });
     }
   }, [eventoAtual, form]);
@@ -143,6 +158,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
         dataPagamento: data.dataPagamento.toISOString(),
         status: data.status,
         boletoUrls: data.boletos?.map(b => b.url) || [],
+        comprovanteUrls: data.comprovantes?.map(c => c.url) || [],
       };
       
       if (eventoAtual?.id) {
@@ -194,6 +210,35 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
           toast({
             title: "Erro ao enviar boletos",
             description: "Não foi possível anexar os boletos",
+            variant: "destructive",
+          });
+        } finally {
+          setUploadingBoleto(false);
+        }
+      }
+
+      if (comprovantes.length > 0) {
+        setUploadingBoleto(true);
+        try {
+          const comprovanteUrls = await Promise.all(
+            comprovantes.map(c => 
+              EventosService.uploadArquivo(c.file, 'comprovante', eventoAtual?.id || '')
+            )
+          );
+          
+          if (comprovanteUrls.length > 0) {
+            eventoData.comprovanteUrl = comprovanteUrls[0];
+            eventoData.comprovanteUrls = comprovanteUrls;
+            toast({
+              title: "Comprovantes de pagamento enviados",
+              description: `${comprovanteUrls.length} comprovante(s) anexado(s) com sucesso`,
+            });
+          }
+        } catch (error) {
+          console.error("Erro ao fazer upload dos comprovantes:", error);
+          toast({
+            title: "Erro ao enviar comprovantes",
+            description: "Não foi possível anexar os comprovantes",
             variant: "destructive",
           });
         } finally {
@@ -364,6 +409,108 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
     form.reset(prev => ({
       ...prev,
       boletos: prev.boletos?.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleComprovanteChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    const file = files[0];
+    if (!file) return;
+
+    setComprovanteTemporario(prev => ({
+      ...prev,
+      file
+    }));
+  };
+
+  const handleAdicionarComprovante = async () => {
+    if (!comprovanteTemporario.file || !comprovanteTemporario.dataPagamento) {
+      toast({
+        title: "Erro",
+        description: "Selecione um arquivo e uma data de pagamento",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const file = comprovanteTemporario.file;
+    const fileExt = file.name.split('.').pop()?.toLowerCase();
+    
+    if (fileExt && ['pdf', 'jpg', 'jpeg', 'png'].includes(fileExt)) {
+      try {
+        console.log('Iniciando upload do comprovante:', file.name);
+        const fileName = `${Date.now()}-${file.name}`;
+        const filePath = `comprovantes/${fileName}`;
+
+        // Primeiro, fazemos o upload do arquivo
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('documentos')
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false,
+            contentType: file.type || 'application/pdf'
+          });
+
+        if (uploadError) {
+          console.error('Erro detalhado do upload:', uploadError);
+          toast({
+            title: "Erro",
+            description: `Não foi possível fazer o upload do comprovante: ${uploadError.message}`,
+            variant: "destructive",
+          });
+          return;
+        }
+
+        console.log('Upload concluído com sucesso:', uploadData);
+
+        // Depois, obtemos a URL pública do arquivo
+        const { data: { publicUrl } } = supabase.storage
+          .from('documentos')
+          .getPublicUrl(filePath);
+
+        console.log('URL pública gerada:', publicUrl);
+
+        const novoComprovante = {
+          nome: file.name,
+          url: publicUrl,
+          dataPagamento: comprovanteTemporario.dataPagamento
+        };
+
+        setComprovantes([...comprovantes, novoComprovante]);
+        form.setValue('comprovantes', [...(form.getValues('comprovantes') || []), novoComprovante]);
+
+        setComprovanteTemporario({
+          file: null,
+          dataPagamento: ''
+        });
+
+        toast({
+          title: "Sucesso",
+          description: "Comprovante adicionado com sucesso",
+        });
+      } catch (error) {
+        console.error('Erro completo ao processar comprovante:', error);
+        toast({
+          title: "Erro",
+          description: "Ocorreu um erro ao processar o comprovante. Por favor, tente novamente.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "Erro",
+        description: "Formato de arquivo não suportado. Use PDF, JPG ou PNG.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleRemoveComprovante = (index: number) => {
+    form.reset(prev => ({
+      ...prev,
+      comprovantes: prev.comprovantes?.filter((_, i) => i !== index)
     }));
   };
 
@@ -696,6 +843,67 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
           </div>
         </div>
 
+        <div className="space-y-4">
+          <h3 className="text-lg font-medium">Comprovantes de Pagamento</h3>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-2">
+              <Input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleComprovanteChange}
+                className="cursor-pointer"
+              />
+              <Input
+                type="date"
+                value={comprovanteTemporario.dataPagamento}
+                onChange={(e) => setComprovanteTemporario(prev => ({
+                  ...prev,
+                  dataPagamento: e.target.value
+                }))}
+                className="w-40"
+              />
+              <Button
+                type="button"
+                onClick={handleAdicionarComprovante}
+                disabled={!comprovanteTemporario.file || !comprovanteTemporario.dataPagamento}
+              >
+                Adicionar Comprovante
+              </Button>
+            </div>
+            
+            {/* Lista de comprovantes selecionados */}
+            {comprovantes.length > 0 && (
+              <div className="space-y-2">
+                {comprovantes.map((comprovante, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    <div className="flex items-center space-x-2">
+                      <FileText className="h-4 w-4 text-gray-500" />
+                      <span className="text-sm">{comprovante.nome}</span>
+                      <span className="text-xs text-gray-500">
+                        (Data do Pagamento: {comprovante.dataPagamento.split('-').reverse().join('/')})
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const novosComprovantes = [...comprovantes];
+                        novosComprovantes.splice(index, 1);
+                        setComprovantes(novosComprovantes);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <FormDescription>
+            Você pode adicionar múltiplos comprovantes de pagamento. Formatos aceitos: PDF, JPG, PNG.
+          </FormDescription>
+        </div>
+
         <div className="flex justify-end space-x-4">
           <Button
             type="button"
@@ -705,6 +913,7 @@ export function EventoForm({ eventoAtual, onSubmit, isLoading }: EventoFormProps
               setAnexoNFe(null);
               setAnexosBoleto([]);
               setBoletos([]);
+              setComprovantes([]);
             }}
           >
             Cancelar

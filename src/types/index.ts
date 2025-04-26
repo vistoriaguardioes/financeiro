@@ -13,6 +13,7 @@ export interface EventoFinanceiro {
   boletoUrl?: string;
   boletoUrls?: string[];
   boletos?: ArquivoBoleto[];
+  comprovantes?: ComprovantePagamento[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -55,4 +56,10 @@ export interface ArquivoBoleto {
   nome: string;
   url: string;
   dataVencimento: string;
+}
+
+export interface ComprovantePagamento {
+  nome: string;
+  url: string;
+  dataPagamento: string;
 }
