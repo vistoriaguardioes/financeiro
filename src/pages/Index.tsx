@@ -173,7 +173,6 @@ const Dashboard = () => {
                   props.payload.name
                 ]}
               />
-              <Legend verticalAlign="bottom" height={36} />
             </PieChart>
           </ResponsiveContainer>
         </div>
